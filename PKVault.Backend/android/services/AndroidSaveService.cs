@@ -12,8 +12,8 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
 
     public AndroidSaveInfoDTO ParseAndCache(string userId, byte[] data, string filename)
     {
-        var save = SaveUtil.GetVariantSAV(data)
-            ?? throw new InvalidOperationException($"Unrecognized save file format: {filename}");
+        if (!SaveUtil.TryGetSaveFile(data, out var save, filename))
+            throw new InvalidOperationException($"Unrecognized save file format: {filename}");
 
         var saveId = $"{userId}-{Guid.NewGuid():N}";
         var pokemon = ExtractPokemon(save);
@@ -81,7 +81,7 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                     Move2: pkm.Move2,
                     Move3: pkm.Move3,
                     Move4: pkm.Move4,
-                    RawData: pkm.DecryptedBoxData
+                    RawData: pkm.GetDecryptedDataParty()
                 ));
             }
         }
