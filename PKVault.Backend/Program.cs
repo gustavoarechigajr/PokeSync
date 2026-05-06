@@ -3,8 +3,14 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using PKVault.Backend.auth;
+using PKVault.Backend.auth.services;
 using Serilog;
 
 namespace PKVault.Backend;
@@ -90,10 +96,15 @@ public class Program
         //     return null;
         // }
 
-        return async () =>
+        // Ensure auth DB is created/migrated on startup
+        using (var scope = host.Services.CreateScope())
         {
-            await host.Services.GetRequiredService<ISessionServiceMinimal>().EnsureSessionCreated();
-        };
+            var authDb = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+            await authDb.Database.MigrateAsync();
+        }
+
+        // Sessions are created per-user on first authenticated request - no startup session needed
+        return null;
 #else
         throw new Exception("Mode not defined");
 #endif
@@ -176,6 +187,42 @@ public class Program
             });
 
         services.AddSerilog();
+
+        Log.Information("Setup services - Auth");
+        services.AddHttpContextAccessor();
+        services.AddDbContext<AuthDbContext>((sp, options) =>
+        {
+            var settingsService = sp.GetRequiredService<ISettingsService>();
+            var dbPath = Path.Combine(settingsService.GetSettings().GetDbPath(), "auth.db");
+            options.UseSqlite($"Data Source={dbPath}");
+        });
+        services.AddScoped<AuthService>();
+
+        var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
+            ?? "pokesync-dev-secret-key-change-in-production-min-32-chars";
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = "pokesync",
+                    ValidAudience = "pokesync",
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+                };
+            });
+        services.AddAuthorization();
+
+        // Expose JWT key via IConfiguration for AuthService
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Jwt:Key"] = jwtKey,
+                ["Jwt:Issuer"] = "pokesync",
+            })
+            .Build());
 
 #if MODE_GEN_POKEAPI
         services.AddSingleton<PokeApiService>();
@@ -281,6 +328,20 @@ public class Program
             .AllowAnyOrigin()
             .AllowAnyMethod()
             .AllowAnyHeader());
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        // Ensure each authenticated user's PKVault session is initialized on first request
+        app.Use(async (context, next) =>
+        {
+            if (context.User.Identity?.IsAuthenticated == true)
+            {
+                var session = context.RequestServices.GetRequiredService<ISessionServiceMinimal>();
+                await session.EnsureSessionCreated();
+            }
+            await next();
+        });
 
         app.UseMiddleware<ExceptionHandlingMiddleware>();
         app.UseEndpoints(endpoints =>

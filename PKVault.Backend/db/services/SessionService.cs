@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Security.Claims;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,7 +29,8 @@ public class SessionService(
     ILogger<SessionService> log,
     IServiceProvider sp, TimeProvider timeProvider,
     IFileIOService fileIOService, ISettingsService settingsService,
-    ISavesLoadersService savesLoadersService
+    ISavesLoadersService savesLoadersService,
+    IHttpContextAccessor httpContextAccessor
 ) : ISessionService
 {
     public record ActionRecord(
@@ -35,46 +38,65 @@ public class SessionService(
         DataActionPayload Payload
     );
 
+    private sealed class UserSessionState
+    {
+        public Task<DataUpdateFlags>? StartTask;
+        public Guid? ByPassContextId;
+        public DateTime? StartTime;
+        public readonly List<ActionRecord> Actions = [];
+    }
+
+    private readonly ConcurrentDictionary<string, UserSessionState> _userSessions = new();
+
     private string DbFolderPath => settingsService.GetSettings().GetDbPath();
-    public string MainDbPath => Path.Combine(DbFolderPath, "pkvault.db");
-    public string MainDbRelativePath => Path.Combine(settingsService.GetSettings().SettingsMutable.DB_PATH, "pkvault.db");
-    public string SessionDbPath => Path.Combine(DbFolderPath, "pkvault-session.db");
 
-    public DateTime? StartTime { get; private set; }
+    private string GetCurrentUserId()
+    {
+        var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return userId ?? throw new InvalidOperationException("No authenticated user in HTTP context.");
+    }
 
-    private Task<DataUpdateFlags>? StartTask = null;
+    private UserSessionState GetCurrentSession() =>
+        _userSessions.GetOrAdd(GetCurrentUserId(), _ => new UserSessionState());
 
-    // bypass DB check if same as DB.ContextId
-    private Guid? ByPassContextId = null;
+    // Per-user DB paths
+    public string MainDbPath => GetMainDbPath(GetCurrentUserId());
+    public string MainDbRelativePath => Path.Combine(
+        settingsService.GetSettings().SettingsMutable.DB_PATH,
+        $"pkvault-{GetCurrentUserId()}.db");
+    public string SessionDbPath => GetSessionDbPath(GetCurrentUserId());
 
-    public List<ActionRecord> Actions { get; } = [];
+    private string GetMainDbPath(string userId) => Path.Combine(DbFolderPath, $"pkvault-{userId}.db");
+    private string GetSessionDbPath(string userId) => Path.Combine(DbFolderPath, $"pkvault-session-{userId}.db");
+
+    // ISessionService interface — delegate to per-user state
+    public DateTime? StartTime => GetCurrentSession().StartTime;
+    public List<ActionRecord> Actions => GetCurrentSession().Actions;
 
     public bool HasMainDb() => fileIOService.Exists(MainDbPath);
 
-    public List<DataActionPayload> GetActionPayloadList()
-    {
-        return [.. Actions.Select(action => action.Payload)];
-    }
+    public List<DataActionPayload> GetActionPayloadList() =>
+        [.. GetCurrentSession().Actions.Select(a => a.Payload)];
 
-    public bool HasEmptyActionList()
-    {
-        return Actions.Count == 0;
-    }
+    public bool HasEmptyActionList() => GetCurrentSession().Actions.Count == 0;
 
     public async Task StartNewSession(bool checkInitialActions, DataUpdateFlags? flags)
     {
-        StartTime = timeProvider.GetUtcNow().DateTime;
+        var userId = GetCurrentUserId();
+        var session = GetCurrentSession();
+
+        session.StartTime = timeProvider.GetUtcNow().DateTime;
 
         using var _ = log.Time("Starting new session");
 
-        Actions.Clear();
+        session.Actions.Clear();
 
-        StartTask = Task.Run(async () =>
+        session.StartTask = Task.Run(async () =>
         {
             flags ??= new();
 
             await Task.WhenAll(
-                ResetDbSession(flags),
+                ResetDbSession(userId, flags),
                 savesLoadersService.Setup(flags)
             );
 
@@ -82,8 +104,7 @@ public class SessionService(
             {
                 using var scope = sp.CreateScope();
 
-                // required to avoid deadlocks, ex: SessionService => SynchronizeAction => loaders => SessionService
-                ByPassContextId = scope.ServiceProvider.GetRequiredService<SessionDbContext>()
+                session.ByPassContextId = scope.ServiceProvider.GetRequiredService<SessionDbContext>()
                     .ContextId.InstanceId;
 
                 var hadDataToNormalize = await CheckDataToNormalize(scope, flags);
@@ -92,16 +113,16 @@ public class SessionService(
 
                 if (hadDataToNormalize)
                 {
-                    await CheckFirstRunAutoSave(scope, flags);
+                    await CheckFirstRunAutoSave(userId, scope, flags);
                 }
 
-                ByPassContextId = null;
+                session.ByPassContextId = null;
             }
 
             return flags;
         });
 
-        await StartTask;
+        await session.StartTask;
     }
 
     private async Task<bool> CheckDataToNormalize(IServiceScope scope, DataUpdateFlags flags)
@@ -151,12 +172,7 @@ public class SessionService(
         }
     }
 
-    /**
-     * If first app run (with no data),
-     * persist session data then restart new one, for conveniance,
-     * avoiding the need to save initial data
-     */
-    private async Task CheckFirstRunAutoSave(IServiceScope scope, DataUpdateFlags flags)
+    private async Task CheckFirstRunAutoSave(string userId, IServiceScope scope, DataUpdateFlags flags)
     {
         var savesLoaders = scope.ServiceProvider.GetRequiredService<ISavesLoadersService>();
         var pkmVariantLoader = scope.ServiceProvider.GetRequiredService<IPkmVariantLoader>();
@@ -166,7 +182,7 @@ public class SessionService(
 
         if (!hasAnyData)
         {
-            log.LogInformation($"Fresh start detected - Session persisting & retarting");
+            log.LogInformation("Fresh start detected - Session persisting & restarting");
             await PersistSession(scope);
             await StartNewSession(checkInitialActions: false, flags);
         }
@@ -174,66 +190,70 @@ public class SessionService(
 
     public async Task EnsureSessionCreated(Guid? byPassContextId = null)
     {
-        if (StartTask == null)
+        var userId = GetCurrentUserId();
+        var session = GetCurrentSession();
+
+        if (session.StartTask == null)
         {
-            log.LogInformation($"Session no created - Start new one");
+            log.LogInformation("Session not created for user {UserId} - Starting new one", userId);
             await StartNewSession(checkInitialActions: true, null);
         }
-        // bypass check
-        else if (byPassContextId != null && byPassContextId == ByPassContextId)
+        else if (byPassContextId != null && byPassContextId == session.ByPassContextId)
         {
             return;
         }
         else
         {
-            await StartTask;
+            await session.StartTask;
         }
     }
 
     public async Task PersistSession(IServiceScope scope)
     {
-        using var _ = log.Time($"Persist session with copy session to main");
+        var userId = GetCurrentUserId();
+        var session = GetCurrentSession();
 
-        // before copy to main:
-        // - persist PKM files
-        // - clear session-only PkmFile tables
+        using var _ = log.Time("Persist session with copy session to main");
+
         var pkmFileLoader = scope.ServiceProvider.GetRequiredService<IPkmFileLoader>();
         await pkmFileLoader.WriteToFiles();
 
         await savesLoadersService.WriteToFiles();
         savesLoadersService.Clear();
 
-        Actions.Clear();
+        session.Actions.Clear();
 
-        await CloseConnection();
-        StartTask = null;
+        await CloseConnection(userId);
+        session.StartTask = null;
 
-        log.LogDebug($"Move session DB to main");
-        fileIOService.Move(SessionDbPath, MainDbPath, overwrite: true);
+        log.LogDebug("Move session DB to main for user {UserId}", userId);
+        fileIOService.Move(GetSessionDbPath(userId), GetMainDbPath(userId), overwrite: true);
 
-        StartTime = null;
+        session.StartTime = null;
     }
 
-    private async Task ResetDbSession(DataUpdateFlags flags)
+    private async Task ResetDbSession(string userId, DataUpdateFlags flags)
     {
-        if (fileIOService.Exists(SessionDbPath))
+        var sessionDbPath = GetSessionDbPath(userId);
+        var mainDbPath = GetMainDbPath(userId);
+
+        if (fileIOService.Exists(sessionDbPath))
         {
             using var scope = sp.CreateScope();
             using var db = scope.ServiceProvider.GetRequiredService<SessionDbContext>();
 
             var deleted1 = await db.Database.EnsureDeletedAsync();
-            var deleted2 = fileIOService.Delete(SessionDbPath);
-            fileIOService.Delete(SessionDbPath + "-shm");
-            fileIOService.Delete(SessionDbPath + "-wal");
+            var deleted2 = fileIOService.Delete(sessionDbPath);
+            fileIOService.Delete(sessionDbPath + "-shm");
+            fileIOService.Delete(sessionDbPath + "-wal");
 
-            log.LogDebug($"DB session deleted={deleted1}/{deleted2}");
+            log.LogDebug("DB session deleted={D1}/{D2} for user {UserId}", deleted1, deleted2, userId);
         }
 
-        if (fileIOService.Exists(MainDbPath))
+        if (fileIOService.Exists(mainDbPath))
         {
-            fileIOService.Copy(MainDbPath, SessionDbPath, overwrite: true);
-
-            log.LogDebug($"DB main copied to session");
+            fileIOService.Copy(mainDbPath, sessionDbPath, overwrite: true);
+            log.LogDebug("DB main copied to session for user {UserId}", userId);
         }
 
         await RunDbMigrations();
@@ -252,39 +272,33 @@ public class SessionService(
         using var scope = sp.CreateScope();
         using var db = scope.ServiceProvider.GetRequiredService<SessionDbContext>();
 
-        // log.LogInformation($"CONTEXT ID = {db.ContextId.InstanceId}");
-
         var migrations = db.Database.GetMigrations();
         if (!migrations.Any())
         {
-            throw new InvalidOperationException($"No migration files");
+            throw new InvalidOperationException("No migration files");
         }
 
         var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
 
-        log.LogDebug($"{pendingMigrations.Count()} pending migrations");
-        log.LogDebug($"{string.Join('\n', pendingMigrations)}");
+        log.LogDebug("{Count} pending migrations", pendingMigrations.Count());
 
-        // DB creation requires its directory to be created
         fileIOService.CreateDirectoryIfAny(MainDbPath);
         fileIOService.CreateDirectoryIfAny(SessionDbPath);
 
-        // migrations may fail in publish-trimmed if columns names not defined
         await db.Database.MigrateAsync();
 
         var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
 
-        log.LogInformation($"{appliedMigrations.Count()} applied migrations");
+        log.LogInformation("{Count} applied migrations", appliedMigrations.Count());
     }
 
-    private async Task CloseConnection()
+    private async Task CloseConnection(string userId)
     {
-        using var _ = log.Time($"SessionService.CloseConnection");
+        using var _ = log.Time("SessionService.CloseConnection");
 
         using var scope = sp.CreateScope();
         using var db = scope.ServiceProvider.GetRequiredService<SessionDbContext>();
 
-        // required to really close connection
         if (db.Database.GetDbConnection() is SqliteConnection sqliteConnection)
         {
             SqliteConnection.ClearPool(sqliteConnection);
@@ -292,6 +306,6 @@ public class SessionService(
 
         await db.Database.CloseConnectionAsync();
 
-        log.LogInformation($"DB session connection closed");
+        log.LogInformation("DB session connection closed for user {UserId}", userId);
     }
 }

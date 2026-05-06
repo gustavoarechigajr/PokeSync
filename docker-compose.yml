@@ -1,14 +1,16 @@
 services:
-  pkvault:
-    image: ghcr.io/chnapy/pkvault:${TAG:-latest}
+  pokesync:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: pkvault
+    container_name: pokesync
     ports:
-      - "3000:3000"
+      - "5000:5000"
+    environment:
+      # Change this to a long random secret before deploying
+      - JWT_KEY=${JWT_KEY:-pokesync-change-this-secret-min-32-chars!!}
     volumes:
-      - ./pkvault-data:/pkvault
+      - ./pokesync-data:/pkvault
 
-      # you must add in app settings save paths: /pkvault/saves/
-      - ./pkvault-saves:/pkvault/saves
+      # Add save paths in app settings: /pkvault/saves/
+      - ./pokesync-saves:/pkvault/saves

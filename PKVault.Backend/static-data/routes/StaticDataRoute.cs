@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace PKVault.Backend.storage.routes;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class StaticDataController(StaticDataService staticDataService) : ControllerBase

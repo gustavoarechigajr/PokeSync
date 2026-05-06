@@ -1,6 +1,10 @@
 
 using System.Text.Json.Serialization;
+using PKVault.Backend.auth.dto;
 
+[JsonSerializable(typeof(AuthResponse))]
+[JsonSerializable(typeof(RegisterRequest))]
+[JsonSerializable(typeof(LoginRequest))]
 [JsonSerializable(typeof(SettingsDTO))]
 [JsonSerializable(typeof(WarningsDTO))]
 [JsonSerializable(typeof(List<BankDTO>))]

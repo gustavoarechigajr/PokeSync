@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
 using System.Net.Mime;
 using Microsoft.AspNetCore.Mvc;
 
 namespace PKVault.Backend.saveinfos.routes;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class SaveInfosController(
