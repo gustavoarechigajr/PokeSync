@@ -81,7 +81,7 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                     Move2: pkm.Move2,
                     Move3: pkm.Move3,
                     Move4: pkm.Move4,
-                    RawData: pkm.EncryptedBoxData
+                    RawData: []
                 ));
             }
         }
