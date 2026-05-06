@@ -188,6 +188,8 @@ public class Program
 
         services.AddSerilog();
 
+        services.AddMemoryCache();
+
         Log.Information("Setup services - Auth");
         services.AddHttpContextAccessor();
         services.AddDbContext<AuthDbContext>((sp, options) =>
@@ -197,6 +199,7 @@ public class Program
             options.UseSqlite($"Data Source={dbPath}");
         });
         services.AddScoped<AuthService>();
+        services.AddSingleton<PKVault.Backend.android.services.AndroidSaveService>();
 
         var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
             ?? "pokesync-dev-secret-key-change-in-production-min-32-chars";

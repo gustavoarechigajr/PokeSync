@@ -1,7 +1,10 @@
 
 using System.Text.Json.Serialization;
+using PKVault.Backend.android.dto;
 using PKVault.Backend.auth.dto;
 
+[JsonSerializable(typeof(AndroidSaveInfoDTO))]
+[JsonSerializable(typeof(List<AndroidPokemonDTO>))]
 [JsonSerializable(typeof(AuthResponse))]
 [JsonSerializable(typeof(RegisterRequest))]
 [JsonSerializable(typeof(LoginRequest))]
