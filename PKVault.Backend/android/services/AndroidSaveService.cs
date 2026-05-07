@@ -187,6 +187,11 @@ public class AndroidSaveService(
 
         // Step 2: dry-run the conversion. If no path exists, ConvertRecursive
         // throws InvalidOperationException — that's a hard block.
+        // Past this point we don't surface PKHeX legality flags as warnings:
+        // the receiving game accepts cross-format transfers regardless, and
+        // EncInvalid/LevelMetBelow/PIDTypeMismatch on a personal-vault transfer
+        // is noise the user can't act on. If a future use case wants strict
+        // legality (online play prep), re-introduce a warnings pass here.
         PKM converted;
         try
         {
@@ -197,16 +202,6 @@ public class AndroidSaveService(
         {
             errors.Add($"Conversion path unavailable: {ex.Message}");
             return new TransferValidationDTO(false, errors, warnings, null);
-        }
-
-        // Step 3: legality of the converted PKM. Failures are warnings only —
-        // SwSh/SV will still render an in-dex species even if encounter/moves
-        // are flagged illegal in PKHeX. The user can override.
-        var la = new LegalityAnalysis(converted);
-        foreach (var check in la.Results)
-        {
-            if (!check.Valid)
-                warnings.Add($"{check.Identifier}: {check.Result}");
         }
 
         return new TransferValidationDTO(
