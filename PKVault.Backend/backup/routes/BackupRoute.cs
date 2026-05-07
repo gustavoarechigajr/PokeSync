@@ -1,10 +1,8 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace PKVault.Backend.backup.routes;
 
-[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class BackupController(BackupService backupService, DataService dataService) : ControllerBase

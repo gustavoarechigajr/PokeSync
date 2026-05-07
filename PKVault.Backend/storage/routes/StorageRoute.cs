@@ -1,11 +1,9 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using PKHeX.Core;
 
 namespace PKVault.Backend.storage.routes;
 
-[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class StorageController(DataService dataService, StorageQueryService storageQueryService, ActionService actionService, ISessionService sessionService) : ControllerBase

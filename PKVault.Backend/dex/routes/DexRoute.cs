@@ -1,9 +1,7 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace PKVault.Backend.dex.routes;
 
-[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class DexController(DexService dexService) : ControllerBase
