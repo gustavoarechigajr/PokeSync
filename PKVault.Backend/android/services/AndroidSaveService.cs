@@ -113,16 +113,15 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                 var type2 = type2Id != type1Id && type2Id < strings.types.Length
                     ? strings.types[type2Id] : (string?)null;
 
-                // Stats (calculated from IVs/EVs/nature/level)
-                // Use Stat_HP (not Stat_HPMax) — PA8/PLA stores them at different offsets,
-                // and SetStats only writes Stat_HP.
-                pkm.SetStats(pkm.GetStats(pkm.PersonalInfo));
-                var statHp  = (int)pkm.Stat_HP;
-                var statAtk = (int)pkm.Stat_ATK;
-                var statDef = (int)pkm.Stat_DEF;
-                var statSpa = (int)pkm.Stat_SPA;
-                var statSpd = (int)pkm.Stat_SPD;
-                var statSpe = (int)pkm.Stat_SPE;
+                // Read from the calculated array directly — avoids SetStats/Stat_HPMax
+                // roundtrip issues on PA8 (PLA) where Stat_HPMax may be stored separately.
+                var calcStats = pkm.GetStats(pkm.PersonalInfo);
+                var statHp  = (int)calcStats[0];
+                var statAtk = (int)calcStats[1];
+                var statDef = (int)calcStats[2];
+                var statSpa = (int)calcStats[3];
+                var statSpd = (int)calcStats[4];
+                var statSpe = (int)calcStats[5];
 
                 // Move names & types
                 string MoveName(ushort move) =>
