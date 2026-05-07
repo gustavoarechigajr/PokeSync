@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PKVault.Backend.android.entity;
 using PKVault.Backend.auth.entity;
 
 namespace PKVault.Backend.auth;
@@ -6,6 +7,7 @@ namespace PKVault.Backend.auth;
 public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(options)
 {
     public DbSet<UserEntity> Users { get; set; }
+    public DbSet<AndroidVaultEntity> AndroidVault { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -13,6 +15,12 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
         {
             entity.HasKey(u => u.Id);
             entity.HasIndex(u => u.Username).IsUnique();
+        });
+
+        modelBuilder.Entity<AndroidVaultEntity>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.HasIndex(v => v.UserId);
         });
     }
 }

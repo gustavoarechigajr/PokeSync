@@ -68,7 +68,7 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                     SpeciesName: speciesName,
                     Nickname: pkm.Nickname,
                     IsNicknamed: pkm.IsNicknamed,
-                    Level: pkm.Stat_Level,
+                    Level: pkm.CurrentLevel,
                     IsShiny: pkm.IsShiny,
                     IsEgg: pkm.IsEgg,
                     Gender: pkm.Gender,

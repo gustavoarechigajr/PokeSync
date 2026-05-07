@@ -9,15 +9,15 @@ namespace PKVault.Backend.android.routes;
 [Authorize]
 [ApiController]
 [Route("api/android")]
-public class AndroidController(AndroidSaveService saveService) : ControllerBase
+public class AndroidController(
+    AndroidSaveService saveService,
+    AndroidVaultService vaultService) : ControllerBase
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? throw new InvalidOperationException("No user in token");
 
-    /// <summary>
-    /// Upload a raw save file (.sav, .srm, etc.).
-    /// Returns the full Pokemon list from the save's boxes.
-    /// </summary>
+    // ── Save file endpoints ────────────────────────────────────────────────────
+
     [HttpPost("saves/upload")]
     [RequestSizeLimit(50 * 1024 * 1024)]
     public async Task<ActionResult<AndroidSaveInfoDTO>> UploadSave(IFormFile file)
@@ -40,9 +40,6 @@ public class AndroidController(AndroidSaveService saveService) : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Get Pokemon from a previously uploaded save (by saveId).
-    /// </summary>
     [HttpGet("saves/{saveId}")]
     public ActionResult<AndroidSaveInfoDTO> GetSave(string saveId)
     {
@@ -53,9 +50,6 @@ public class AndroidController(AndroidSaveService saveService) : ControllerBase
         return dto is null ? NotFound("Save session expired or not found.") : Ok(dto);
     }
 
-    /// <summary>
-    /// Get just the Pokemon list from a previously uploaded save.
-    /// </summary>
     [HttpGet("saves/{saveId}/pokemon")]
     public ActionResult<List<AndroidPokemonDTO>> GetSavePokemon(string saveId)
     {
@@ -64,5 +58,51 @@ public class AndroidController(AndroidSaveService saveService) : ControllerBase
 
         var dto = saveService.GetCached(saveId);
         return dto is null ? NotFound("Save session expired or not found.") : Ok(dto.Pokemon);
+    }
+
+    // ── Vault (permanent bank) endpoints ──────────────────────────────────────
+
+    /// <summary>Returns all Pokémon permanently stored in the user's vault.</summary>
+    [HttpGet("vault")]
+    public async Task<ActionResult<List<AndroidPokemonDTO>>> GetVault()
+    {
+        var pokemon = await vaultService.GetVault(UserId);
+        return Ok(pokemon);
+    }
+
+    /// <summary>
+    /// Imports all Pokémon from a cached save session into the vault.
+    /// If replace=true, clears the vault first; otherwise appends in new box slots.
+    /// </summary>
+    [HttpPost("vault/import/{saveId}")]
+    public async Task<ActionResult<List<AndroidPokemonDTO>>> ImportToVault(
+        string saveId, [FromQuery] bool replace = false)
+    {
+        if (!saveId.StartsWith(UserId))
+            return Forbid();
+
+        var save = saveService.GetCached(saveId);
+        if (save is null)
+            return NotFound("Save session expired. Re-upload the save file first.");
+
+        var imported = await vaultService.ImportFromSave(UserId, save, replace);
+        return Ok(imported);
+    }
+
+    /// <summary>Removes a Pokémon from the vault.</summary>
+    [HttpDelete("vault/{id}")]
+    public async Task<ActionResult> RemoveFromVault(string id)
+    {
+        var found = await vaultService.Remove(UserId, id);
+        return found ? NoContent() : NotFound();
+    }
+
+    /// <summary>Moves a vault Pokémon to a different box/slot.</summary>
+    [HttpPut("vault/{id}/move")]
+    public async Task<ActionResult> MoveVaultPokemon(
+        string id, [FromQuery] int box, [FromQuery] int slot)
+    {
+        await vaultService.Move(UserId, id, box, slot);
+        return NoContent();
     }
 }

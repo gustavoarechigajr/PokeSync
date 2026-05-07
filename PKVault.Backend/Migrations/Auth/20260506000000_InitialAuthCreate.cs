@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace PKVault.Backend.Migrations.Auth;
 
+[Migration("20260506000000_InitialAuthCreate")]
 public partial class InitialAuthCreate : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

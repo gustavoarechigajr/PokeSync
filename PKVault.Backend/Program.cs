@@ -104,7 +104,7 @@ public class Program
                 ?.Replace("Data Source=", "").Split(';')[0];
             if (!string.IsNullOrEmpty(dbPath))
                 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-            await authDb.Database.EnsureCreatedAsync();
+            await authDb.Database.MigrateAsync();
         }
 
         // Sessions are created per-user on first authenticated request - no startup session needed
@@ -204,6 +204,7 @@ public class Program
         });
         services.AddScoped<AuthService>();
         services.AddSingleton<PKVault.Backend.android.services.AndroidSaveService>();
+        services.AddScoped<PKVault.Backend.android.services.AndroidVaultService>();
 
         var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
             ?? "pokesync-dev-secret-key-change-in-production-min-32-chars";
