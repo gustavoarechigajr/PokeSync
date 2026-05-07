@@ -96,10 +96,14 @@ public class Program
         //     return null;
         // }
 
-        // Ensure auth DB is created/migrated on startup
+        // Ensure auth DB directory exists and run migrations
         using (var scope = host.Services.CreateScope())
         {
             var authDb = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+            var dbPath = authDb.Database.GetConnectionString()
+                ?.Replace("Data Source=", "").Split(';')[0];
+            if (!string.IsNullOrEmpty(dbPath))
+                Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
             await authDb.Database.MigrateAsync();
         }
 
