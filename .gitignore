@@ -416,3 +416,6 @@ pkvault-data/
 pkvault-saves/
 
 tmp-pkhex/
+
+# graphify generated output (large cache dir, regenerated locally)
+graphify-out/
