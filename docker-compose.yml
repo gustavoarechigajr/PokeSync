@@ -1,16 +1,26 @@
 services:
   pokesync:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/gustavoarechigajr/pokesync:latest
     container_name: pokesync
     ports:
       - "5100:5000"
+      - "3000:3000"
     environment:
-      # Change this to a long random secret before deploying
       - JWT_KEY=${JWT_KEY:-pokesync-change-this-secret-min-32-chars!!}
     volumes:
       - ./pokesync-data:/pkvault
-
-      # Add save paths in app settings: /pkvault/saves/
       - ./pokesync-saves:/pkvault/saves
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true          # remove old images after update
+      - WATCHTOWER_POLL_INTERVAL=3600    # check every hour
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_LIFECYCLE_HOOKS=true
+    command: pokesync  # only watch the pokesync container
+    restart: unless-stopped

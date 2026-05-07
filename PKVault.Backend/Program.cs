@@ -188,6 +188,7 @@ public class Program
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.TypeInfoResolver = RouteJsonContext.Default;
+                options.JsonSerializerOptions.Converters.Add(new ByteArrayJsonConverter());
             });
 
         services.AddSerilog();
