@@ -24,6 +24,7 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
             Generation: save.Generation,
             TrainerName: save.OT,
             BoxCount: save.BoxCount,
+            BoxSlotCount: save.BoxSlotCount,
             PokemonCount: pokemon.Count,
             Pokemon: pokemon
         );
@@ -62,6 +63,36 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                     ? strings.Species[pkm.Species]
                     : pkm.Species.ToString();
 
+                // Types
+                var type1Id = pkm.PersonalInfo.Type1;
+                var type2Id = pkm.PersonalInfo.Type2;
+                var type1 = type1Id < strings.types.Length ? strings.types[type1Id] : "Normal";
+                var type2 = type2Id != type1Id && type2Id < strings.types.Length
+                    ? strings.types[type2Id] : (string?)null;
+
+                // Stats (calculated from IVs/EVs/nature/level)
+                pkm.SetStats(pkm.GetStats(pkm.PersonalInfo));
+                var statHp  = (int)pkm.Stat_HPMax;
+                var statAtk = (int)pkm.Stat_ATK;
+                var statDef = (int)pkm.Stat_DEF;
+                var statSpa = (int)pkm.Stat_SPA;
+                var statSpd = (int)pkm.Stat_SPD;
+                var statSpe = (int)pkm.Stat_SPE;
+
+                // Move names & types
+                string MoveName(ushort move) =>
+                    move > 0 && move < strings.movelist.Length ? strings.movelist[move] : "";
+                string MoveType(ushort move)
+                {
+                    if (move == 0) return "";
+                    try
+                    {
+                        var tid = MoveInfo.GetType(move, pkm.Context);
+                        return tid < strings.types.Length ? strings.types[tid] : "Normal";
+                    }
+                    catch { return "Normal"; }
+                }
+
                 result.Add(new AndroidPokemonDTO(
                     Id: id,
                     SpeciesId: pkm.Species,
@@ -81,6 +112,22 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                     Move2: pkm.Move2,
                     Move3: pkm.Move3,
                     Move4: pkm.Move4,
+                    Type1: type1,
+                    Type2: type2,
+                    StatHp: statHp,
+                    StatAtk: statAtk,
+                    StatDef: statDef,
+                    StatSpa: statSpa,
+                    StatSpd: statSpd,
+                    StatSpe: statSpe,
+                    Move1Name: MoveName(pkm.Move1),
+                    Move2Name: MoveName(pkm.Move2),
+                    Move3Name: MoveName(pkm.Move3),
+                    Move4Name: MoveName(pkm.Move4),
+                    Move1Type: MoveType(pkm.Move1),
+                    Move2Type: MoveType(pkm.Move2),
+                    Move3Type: MoveType(pkm.Move3),
+                    Move4Type: MoveType(pkm.Move4),
                     RawData: []
                 ));
             }
