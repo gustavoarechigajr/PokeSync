@@ -157,6 +157,8 @@ public class AndroidVaultService(AuthDbContext db)
         Move4Type = p.Move4Type,
         RawData = p.RawData,
         RawDataFormat = p.RawDataFormat,
+        HeldItemId = p.HeldItemId,
+        HeldItemName = p.HeldItemName,
     };
 
     private static AndroidPokemonDTO ToDto(AndroidVaultEntity v) => new(
@@ -195,6 +197,8 @@ public class AndroidVaultService(AuthDbContext db)
         Move3Type: v.Move3Type,
         Move4Type: v.Move4Type,
         RawData: v.RawData ?? [],
-        RawDataFormat: v.RawDataFormat
+        RawDataFormat: v.RawDataFormat,
+        HeldItemId: v.HeldItemId,
+        HeldItemName: v.HeldItemName
     );
 }

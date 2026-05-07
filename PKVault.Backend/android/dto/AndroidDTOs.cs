@@ -37,7 +37,9 @@ public record AndroidPokemonDTO(
     string Move3Type,
     string Move4Type,
     [property: System.Text.Json.Serialization.JsonConverter(typeof(ByteArrayJsonConverter))] byte[] RawData,
-    string? RawDataFormat
+    string? RawDataFormat,
+    int HeldItemId,
+    string? HeldItemName
 );
 
 public record AndroidSaveInfoDTO(

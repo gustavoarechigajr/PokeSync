@@ -389,6 +389,11 @@ public class AndroidSaveService(
                     catch { return "Normal"; }
                 }
 
+                var heldItemId = pkm.HeldItem;
+                var heldItemName = heldItemId > 0 && heldItemId < strings.itemlist.Length
+                    ? strings.itemlist[heldItemId]
+                    : null;
+
                 result.Add(new AndroidPokemonDTO(
                     Id: id,
                     SpeciesId: pkm.Species,
@@ -425,7 +430,9 @@ public class AndroidSaveService(
                     Move3Type: MoveType(pkm.Move3),
                     Move4Type: MoveType(pkm.Move4),
                     RawData: pkm.Data.ToArray(),
-                    RawDataFormat: pkm.GetType().Name
+                    RawDataFormat: pkm.GetType().Name,
+                    HeldItemId: heldItemId,
+                    HeldItemName: heldItemName
                 ));
             }
         }

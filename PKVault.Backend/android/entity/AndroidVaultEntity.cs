@@ -39,5 +39,7 @@ public class AndroidVaultEntity
     public string Move4Type { get; set; } = "";
     public byte[]? RawData { get; set; }
     public string? RawDataFormat { get; set; }
+    public int HeldItemId { get; set; }
+    public string? HeldItemName { get; set; }
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
 }
