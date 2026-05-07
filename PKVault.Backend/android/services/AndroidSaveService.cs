@@ -6,9 +6,15 @@ using PKVault.Backend.android.dto;
 
 namespace PKVault.Backend.android.services;
 
-public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> log)
+public class AndroidSaveService(
+    IMemoryCache cache,
+    IPkmConvertService pkmConvertService,
+    ILogger<AndroidSaveService> log)
 {
     private static readonly TimeSpan SaveTtl = TimeSpan.FromHours(2);
+
+    private static string SaveDtoKey(string saveId) => $"android-save:dto:{saveId}";
+    private static string RawDataKey(string saveId) => $"android-save:raw:{saveId}";
 
     public AndroidSaveInfoDTO ParseAndCache(string userId, byte[] data, string filename)
     {
@@ -29,7 +35,8 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
             Pokemon: pokemon
         );
 
-        cache.Set(CacheKey(saveId), dto, SaveTtl);
+        cache.Set(SaveDtoKey(saveId), dto, SaveTtl);
+        cache.Set(RawDataKey(saveId), data, SaveTtl);
 
         log.LogInformation(
             "Parsed save {SaveId}: game={Game} gen={Gen} trainer={Trainer} pokemon={Count}",
@@ -40,9 +47,37 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
     }
 
     public AndroidSaveInfoDTO? GetCached(string saveId) =>
-        cache.TryGetValue(CacheKey(saveId), out AndroidSaveInfoDTO? dto) ? dto : null;
+        cache.TryGetValue(SaveDtoKey(saveId), out AndroidSaveInfoDTO? dto) ? dto : null;
 
-    private static string CacheKey(string saveId) => $"android-save:{saveId}";
+    /// <summary>
+    /// Injects a PKM into the cached save at the given box/slot and returns the modified save bytes.
+    /// Returns null if the save is no longer cached.
+    /// </summary>
+    public byte[]? InjectPkm(string saveId, PKM pkm, int targetBox, int targetSlot)
+    {
+        if (!cache.TryGetValue(RawDataKey(saveId), out byte[]? rawBytes) || rawBytes == null)
+            return null;
+
+        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, ""))
+            return null;
+
+        if (targetBox >= save.BoxCount || targetSlot >= save.BoxSlotCount)
+            throw new ArgumentOutOfRangeException(
+                $"Box/slot {targetBox}/{targetSlot} out of range for save with {save.BoxCount} boxes, {save.BoxSlotCount} slots");
+
+        var converted = pkmConvertService.ConvertTo(
+            new ImmutablePKM(pkm),
+            save.BlankPKM.GetType(),
+            null,
+            save);
+
+        save.SetBoxSlotAtIndex(converted.GetMutablePkm(), targetBox, targetSlot);
+
+        var modifiedBytes = save.Write();
+        cache.Set(RawDataKey(saveId), modifiedBytes, SaveTtl);
+
+        return modifiedBytes;
+    }
 
     private static string FriendlyGameName(GameVersion v) => v switch
     {
@@ -172,7 +207,8 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
                     Move2Type: MoveType(pkm.Move2),
                     Move3Type: MoveType(pkm.Move3),
                     Move4Type: MoveType(pkm.Move4),
-                    RawData: []
+                    RawData: pkm.Data.ToArray(),
+                    RawDataFormat: pkm.GetType().Name
                 ));
             }
         }

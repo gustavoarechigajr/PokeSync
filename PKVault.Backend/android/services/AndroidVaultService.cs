@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PKHeX.Core;
 using PKVault.Backend.android.dto;
 using PKVault.Backend.android.entity;
 using PKVault.Backend.auth;
@@ -88,6 +89,35 @@ public class AndroidVaultService(AuthDbContext db)
         await db.SaveChangesAsync();
     }
 
+    /// <summary>Returns the raw vault entity (including PKM bytes) for export.</summary>
+    public async Task<AndroidVaultEntity?> GetEntity(string userId, string id) =>
+        await db.AndroidVault.FirstOrDefaultAsync(v => v.UserId == userId && v.Id == id);
+
+    /// <summary>Reconstructs a PKM from stored raw data.</summary>
+    public static PKM? ReconstructPkm(AndroidVaultEntity entity)
+    {
+        if (entity.RawData == null || entity.RawData.Length == 0 || string.IsNullOrEmpty(entity.RawDataFormat))
+            return null;
+
+        return entity.RawDataFormat switch
+        {
+            "PK1" => new PK1(entity.RawData),
+            "PK2" => new PK2(entity.RawData),
+            "PK3" => new PK3(entity.RawData),
+            "PK4" => new PK4(entity.RawData),
+            "PK5" => new PK5(entity.RawData),
+            "PK6" => new PK6(entity.RawData),
+            "PK7" => new PK7(entity.RawData),
+            "PB7" => new PB7(entity.RawData),
+            "PK8" => new PK8(entity.RawData),
+            "PA8" => new PA8(entity.RawData),
+            "PB8" => new PB8(entity.RawData),
+            "PK9" => new PK9(entity.RawData),
+            "PA9" => new PA9(entity.RawData),
+            _ => null
+        };
+    }
+
     private static AndroidVaultEntity MapToEntity(string userId, AndroidPokemonDTO p, int box, int slot) => new()
     {
         Id = Guid.NewGuid().ToString(),
@@ -125,6 +155,8 @@ public class AndroidVaultService(AuthDbContext db)
         Move2Type = p.Move2Type,
         Move3Type = p.Move3Type,
         Move4Type = p.Move4Type,
+        RawData = p.RawData,
+        RawDataFormat = p.RawDataFormat,
     };
 
     private static AndroidPokemonDTO ToDto(AndroidVaultEntity v) => new(
@@ -162,6 +194,7 @@ public class AndroidVaultService(AuthDbContext db)
         Move2Type: v.Move2Type,
         Move3Type: v.Move3Type,
         Move4Type: v.Move4Type,
-        RawData: []
+        RawData: v.RawData ?? [],
+        RawDataFormat: v.RawDataFormat
     );
 }

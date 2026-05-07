@@ -62,6 +62,8 @@ partial class AuthDbContextModelSnapshot : ModelSnapshot
             b.Property<string>("Move2Type").IsRequired().HasDefaultValue("").HasColumnType("TEXT");
             b.Property<string>("Move3Type").IsRequired().HasDefaultValue("").HasColumnType("TEXT");
             b.Property<string>("Move4Type").IsRequired().HasDefaultValue("").HasColumnType("TEXT");
+            b.Property<byte[]>("RawData").HasColumnType("BLOB");
+            b.Property<string>("RawDataFormat").HasColumnType("TEXT");
             b.Property<DateTime>("ImportedAt").HasColumnType("TEXT");
             b.HasKey("Id");
             b.HasIndex("UserId");

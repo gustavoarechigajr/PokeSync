@@ -37,5 +37,7 @@ public class AndroidVaultEntity
     public string Move2Type { get; set; } = "";
     public string Move3Type { get; set; } = "";
     public string Move4Type { get; set; } = "";
+    public byte[]? RawData { get; set; }
+    public string? RawDataFormat { get; set; }
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
 }

@@ -36,7 +36,8 @@ public record AndroidPokemonDTO(
     string Move2Type,
     string Move3Type,
     string Move4Type,
-    byte[] RawData
+    byte[] RawData,
+    string? RawDataFormat
 );
 
 public record AndroidSaveInfoDTO(

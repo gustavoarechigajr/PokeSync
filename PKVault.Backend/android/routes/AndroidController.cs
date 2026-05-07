@@ -125,4 +125,37 @@ public class AndroidController(
         await vaultService.Move(UserId, id, box, slot);
         return NoContent();
     }
+
+    /// <summary>
+    /// Exports a vault Pokémon into a cached save file at the specified box/slot.
+    /// The PKM is converted to the target save's format and injected.
+    /// Returns the modified save file for the client to write back to device storage.
+    /// </summary>
+    [HttpPost("vault/{vaultId}/export")]
+    public async Task<ActionResult> ExportToSave(
+        string vaultId,
+        [FromQuery] string saveId,
+        [FromQuery] int box,
+        [FromQuery] int slot)
+    {
+        if (!saveId.StartsWith(UserId))
+            return Forbid();
+
+        var entity = await vaultService.GetEntity(UserId, vaultId);
+        if (entity is null)
+            return NotFound("Vault Pokémon not found.");
+
+        if (entity.RawData == null || entity.RawData.Length == 0)
+            return BadRequest("This Pokémon has no raw data stored. Re-import it from a save file.");
+
+        var pkm = AndroidVaultService.ReconstructPkm(entity);
+        if (pkm is null)
+            return BadRequest($"Failed to reconstruct PKM from format '{entity.RawDataFormat}'.");
+
+        var modifiedBytes = saveService.InjectPkm(saveId, pkm, box, slot);
+        if (modifiedBytes is null)
+            return NotFound("Save session expired. Please re-upload the save file first.");
+
+        return File(modifiedBytes, "application/octet-stream", "save_exported.bin");
+    }
 }
