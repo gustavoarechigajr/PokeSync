@@ -96,7 +96,7 @@ public class Program
         //     return null;
         // }
 
-        // Ensure auth DB directory exists and run migrations
+        // Ensure auth DB directory and schema exist
         using (var scope = host.Services.CreateScope())
         {
             var authDb = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -104,7 +104,7 @@ public class Program
                 ?.Replace("Data Source=", "").Split(';')[0];
             if (!string.IsNullOrEmpty(dbPath))
                 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-            await authDb.Database.MigrateAsync();
+            await authDb.Database.EnsureCreatedAsync();
         }
 
         // Sessions are created per-user on first authenticated request - no startup session needed
