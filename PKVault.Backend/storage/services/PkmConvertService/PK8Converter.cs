@@ -319,6 +319,16 @@ public class PK8Converter(PKMConverterUtils utils)
 
         utils.FixMetLocation(pk8, [GameVersion.SW, GameVersion.SH]);
 
+        // If FixMetLocation couldn't find a native SwSh encounter, MetLocation
+        // stays at the HOME value (30001) we initialized above. In that case
+        // the Pokemon needs to look like a HOME-import from its source game
+        // (PLA), not a wild SwSh capture — reset Version to the source so
+        // PKHeX/SwSh stop flagging TransferBad and render the sprite + correct
+        // type. Native-SwSh species (e.g. Ponyta) skip this branch because
+        // FixMetLocation re-stamped them to a valid SW wild encounter.
+        if (pk8.MetLocation == 30001)
+            pk8.Version = pa8.Version;
+
         if (rndValues == null)
             utils.FixPID(pk8, pa8.IsShiny, pa8.Form, pa8.Gender, pa8.Nature);
 
