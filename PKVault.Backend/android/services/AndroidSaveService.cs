@@ -17,6 +17,7 @@ public class AndroidSaveService(
 
     private static string SaveDtoKey(string saveId) => $"android-save:dto:{saveId}";
     private static string RawDataKey(string saveId) => $"android-save:raw:{saveId}";
+    private static string FilenameKey(string saveId) => $"android-save:filename:{saveId}";
 
     private string SaveDirectory()
     {
@@ -25,6 +26,7 @@ public class AndroidSaveService(
         return dir;
     }
     private string RawDataPath(string saveId) => Path.Combine(SaveDirectory(), $"{saveId}.sav");
+    private string FilenameMetaPath(string saveId) => Path.Combine(SaveDirectory(), $"{saveId}.meta");
 
     public AndroidSaveInfoDTO ParseAndCache(string userId, byte[] data, string filename)
     {
@@ -47,7 +49,8 @@ public class AndroidSaveService(
 
         cache.Set(SaveDtoKey(saveId), dto, SaveTtl);
         cache.Set(RawDataKey(saveId), data, SaveTtl);
-        WriteRawDataToDisk(saveId, data);
+        cache.Set(FilenameKey(saveId), filename, SaveTtl);
+        WriteRawDataToDisk(saveId, data, filename);
 
         log.LogInformation(
             "Parsed save {SaveId}: game={Game} gen={Gen} trainer={Trainer} pokemon={Count}",
@@ -67,12 +70,15 @@ public class AndroidSaveService(
         if (cache.TryGetValue(SaveDtoKey(saveId), out AndroidSaveInfoDTO? dto) && dto != null)
             return dto;
 
-        var rawBytes = ReadRawDataFromDisk(saveId);
-        if (rawBytes == null) return null;
+        var disk = ReadRawDataFromDisk(saveId);
+        if (disk == null) return null;
+        var (rawBytes, filename) = disk.Value;
 
-        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, ""))
+        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, filename))
         {
-            log.LogWarning("Disk-cached save {SaveId} failed to parse; ignoring", saveId);
+            log.LogWarning(
+                "Disk-cached save {SaveId} failed to parse from {Bytes} bytes (filename hint: {Filename}); ignoring",
+                saveId, rawBytes.Length, filename);
             return null;
         }
 
@@ -90,6 +96,7 @@ public class AndroidSaveService(
 
         cache.Set(SaveDtoKey(saveId), rebuilt, SaveTtl);
         cache.Set(RawDataKey(saveId), rawBytes, SaveTtl);
+        cache.Set(FilenameKey(saveId), filename, SaveTtl);
         return rebuilt;
     }
 
@@ -99,16 +106,19 @@ public class AndroidSaveService(
     /// </summary>
     public byte[]? InjectPkm(string saveId, PKM pkm, int targetBox, int targetSlot)
     {
-        var rawBytes = GetRawData(saveId);
-        if (rawBytes == null)
+        var data = GetRawData(saveId);
+        if (data == null)
         {
             log.LogWarning("InjectPkm: no raw data for save {SaveId} (cache + disk both empty)", saveId);
             return null;
         }
+        var (rawBytes, filename) = data.Value;
 
-        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, ""))
+        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, filename))
         {
-            log.LogWarning("InjectPkm: failed to parse save {SaveId} from {Bytes} bytes", saveId, rawBytes.Length);
+            log.LogWarning(
+                "InjectPkm: failed to parse save {SaveId} from {Bytes} bytes (filename hint: {Filename})",
+                saveId, rawBytes.Length, filename);
             return null;
         }
 
@@ -128,31 +138,43 @@ public class AndroidSaveService(
         cache.Set(RawDataKey(saveId), modifiedBytes, SaveTtl);
         // DTO is now stale — drop so next GetCached re-extracts from the modified bytes.
         cache.Remove(SaveDtoKey(saveId));
-        WriteRawDataToDisk(saveId, modifiedBytes);
+        WriteRawDataToDisk(saveId, modifiedBytes, filename);
 
         return modifiedBytes;
     }
 
-    private byte[]? GetRawData(string saveId)
+    private (byte[] Bytes, string Filename)? GetRawData(string saveId)
     {
         if (cache.TryGetValue(RawDataKey(saveId), out byte[]? bytes) && bytes != null)
-            return bytes;
+        {
+            cache.TryGetValue(FilenameKey(saveId), out string? cachedName);
+            return (bytes, cachedName ?? "");
+        }
 
-        bytes = ReadRawDataFromDisk(saveId);
-        if (bytes != null)
-            cache.Set(RawDataKey(saveId), bytes, SaveTtl);
-        return bytes;
+        var disk = ReadRawDataFromDisk(saveId);
+        if (disk == null) return null;
+        cache.Set(RawDataKey(saveId), disk.Value.Bytes, SaveTtl);
+        cache.Set(FilenameKey(saveId), disk.Value.Filename, SaveTtl);
+        return disk;
     }
 
-    private void WriteRawDataToDisk(string saveId, byte[] bytes)
+    private void WriteRawDataToDisk(string saveId, byte[] bytes, string filename)
     {
         var path = RawDataPath(saveId);
         var tmp = path + ".tmp";
+        var metaPath = FilenameMetaPath(saveId);
+        var metaTmp = metaPath + ".tmp";
         try
         {
             // Write-then-rename: avoids leaving a half-written file if the process dies mid-write.
+            // Write the .meta sidecar first — if .sav is present without .meta we fall back to "",
+            // which is the old (broken-for-emulator-saves) behavior; never the inverse.
             lock (DiskLock)
             {
+                File.WriteAllText(metaTmp, filename ?? "");
+                if (File.Exists(metaPath)) File.Delete(metaPath);
+                File.Move(metaTmp, metaPath);
+
                 File.WriteAllBytes(tmp, bytes);
                 if (File.Exists(path)) File.Delete(path);
                 File.Move(tmp, path);
@@ -165,13 +187,17 @@ public class AndroidSaveService(
         }
     }
 
-    private byte[]? ReadRawDataFromDisk(string saveId)
+    private (byte[] Bytes, string Filename)? ReadRawDataFromDisk(string saveId)
     {
         var path = RawDataPath(saveId);
         if (!File.Exists(path)) return null;
         try
         {
-            return File.ReadAllBytes(path);
+            var bytes = File.ReadAllBytes(path);
+            var metaPath = FilenameMetaPath(saveId);
+            // Pre-meta-sidecar saves on disk: filename unknown — fall back to "".
+            var filename = File.Exists(metaPath) ? File.ReadAllText(metaPath) : "";
+            return (bytes, filename);
         }
         catch (Exception ex)
         {
