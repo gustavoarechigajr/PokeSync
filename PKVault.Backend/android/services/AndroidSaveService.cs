@@ -73,7 +73,7 @@ public class AndroidSaveService(
 
         save.SetBoxSlotAtIndex(converted.GetMutablePkm(), targetBox, targetSlot);
 
-        var modifiedBytes = save.Write();
+        var modifiedBytes = save.Write().ToArray();
         cache.Set(RawDataKey(saveId), modifiedBytes, SaveTtl);
 
         return modifiedBytes;
