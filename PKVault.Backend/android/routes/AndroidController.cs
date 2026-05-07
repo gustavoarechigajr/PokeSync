@@ -89,6 +89,26 @@ public class AndroidController(
         return Ok(imported);
     }
 
+    /// <summary>Adds a single Pokémon from a cached save session to the vault.</summary>
+    [HttpPost("vault/add/{saveId}")]
+    public async Task<ActionResult<List<AndroidPokemonDTO>>> AddSingleToVault(
+        string saveId, [FromQuery] int box, [FromQuery] int slot)
+    {
+        if (!saveId.StartsWith(UserId))
+            return Forbid();
+
+        var save = saveService.GetCached(saveId);
+        if (save is null)
+            return NotFound("Save session expired. Re-upload the save file first.");
+
+        var pokemon = save.Pokemon.FirstOrDefault(p => p.Box == box && p.Slot == slot);
+        if (pokemon is null)
+            return NotFound("No Pokémon at that position.");
+
+        var result = await vaultService.AddSingle(UserId, pokemon);
+        return Ok(result);
+    }
+
     /// <summary>Removes a Pokémon from the vault.</summary>
     [HttpDelete("vault/{id}")]
     public async Task<ActionResult> RemoveFromVault(string id)

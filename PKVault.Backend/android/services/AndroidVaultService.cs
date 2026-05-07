@@ -36,44 +36,9 @@ public class AndroidVaultService(AuthDbContext db)
 
         var baseBox = maxBox + 1;
 
-        var entities = save.Pokemon.Select(p => new AndroidVaultEntity
-        {
-            Id = Guid.NewGuid().ToString(),
-            UserId = userId,
-            Box = baseBox + p.Box,
-            Slot = p.Slot,
-            SpeciesId = (ushort)p.SpeciesId,
-            SpeciesName = p.SpeciesName,
-            Nickname = p.Nickname,
-            IsNicknamed = p.IsNicknamed,
-            Level = (byte)p.Level,
-            IsShiny = p.IsShiny,
-            IsEgg = p.IsEgg,
-            Gender = p.Gender,
-            Nature = p.Nature,
-            Ball = p.Ball,
-            Generation = p.Generation,
-            Move1 = p.Move1,
-            Move2 = p.Move2,
-            Move3 = p.Move3,
-            Move4 = p.Move4,
-            Type1 = p.Type1,
-            Type2 = p.Type2,
-            StatHp = p.StatHp,
-            StatAtk = p.StatAtk,
-            StatDef = p.StatDef,
-            StatSpa = p.StatSpa,
-            StatSpd = p.StatSpd,
-            StatSpe = p.StatSpe,
-            Move1Name = p.Move1Name,
-            Move2Name = p.Move2Name,
-            Move3Name = p.Move3Name,
-            Move4Name = p.Move4Name,
-            Move1Type = p.Move1Type,
-            Move2Type = p.Move2Type,
-            Move3Type = p.Move3Type,
-            Move4Type = p.Move4Type,
-        }).ToList();
+        var entities = save.Pokemon
+            .Select(p => MapToEntity(userId, p, baseBox + p.Box, p.Slot))
+            .ToList();
 
         db.AndroidVault.AddRange(entities);
         await db.SaveChangesAsync();
@@ -90,6 +55,30 @@ public class AndroidVaultService(AuthDbContext db)
         return true;
     }
 
+    public async Task<List<AndroidPokemonDTO>> AddSingle(string userId, AndroidPokemonDTO pokemon)
+    {
+        var positions = await db.AndroidVault
+            .Where(v => v.UserId == userId)
+            .Select(v => new { v.Box, v.Slot })
+            .ToListAsync();
+
+        int targetBox = 0, targetSlot = 0;
+        if (positions.Count > 0)
+        {
+            int maxBox = positions.Max(p => p.Box);
+            bool placed = false;
+            for (int b = 0; b <= maxBox + 1 && !placed; b++)
+                for (int s = 0; s < 30 && !placed; s++)
+                    if (!positions.Any(p => p.Box == b && p.Slot == s))
+                    { targetBox = b; targetSlot = s; placed = true; }
+        }
+
+        db.AndroidVault.Add(MapToEntity(userId, pokemon, targetBox, targetSlot));
+        await db.SaveChangesAsync();
+
+        return await GetVault(userId);
+    }
+
     public async Task Move(string userId, string id, int newBox, int newSlot)
     {
         var entity = await db.AndroidVault.FirstOrDefaultAsync(v => v.UserId == userId && v.Id == id);
@@ -98,6 +87,45 @@ public class AndroidVaultService(AuthDbContext db)
         entity.Slot = newSlot;
         await db.SaveChangesAsync();
     }
+
+    private static AndroidVaultEntity MapToEntity(string userId, AndroidPokemonDTO p, int box, int slot) => new()
+    {
+        Id = Guid.NewGuid().ToString(),
+        UserId = userId,
+        Box = box,
+        Slot = slot,
+        SpeciesId = (ushort)p.SpeciesId,
+        SpeciesName = p.SpeciesName,
+        Nickname = p.Nickname,
+        IsNicknamed = p.IsNicknamed,
+        Level = (byte)p.Level,
+        IsShiny = p.IsShiny,
+        IsEgg = p.IsEgg,
+        Gender = p.Gender,
+        Nature = p.Nature,
+        Ball = p.Ball,
+        Generation = p.Generation,
+        Move1 = p.Move1,
+        Move2 = p.Move2,
+        Move3 = p.Move3,
+        Move4 = p.Move4,
+        Type1 = p.Type1,
+        Type2 = p.Type2,
+        StatHp = p.StatHp,
+        StatAtk = p.StatAtk,
+        StatDef = p.StatDef,
+        StatSpa = p.StatSpa,
+        StatSpd = p.StatSpd,
+        StatSpe = p.StatSpe,
+        Move1Name = p.Move1Name,
+        Move2Name = p.Move2Name,
+        Move3Name = p.Move3Name,
+        Move4Name = p.Move4Name,
+        Move1Type = p.Move1Type,
+        Move2Type = p.Move2Type,
+        Move3Type = p.Move3Type,
+        Move4Type = p.Move4Type,
+    };
 
     private static AndroidPokemonDTO ToDto(AndroidVaultEntity v) => new(
         Id: v.Id,
