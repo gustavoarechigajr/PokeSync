@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using PKVault.Backend.auth;
 
 #nullable disable
 
 namespace PKVault.Backend.Migrations.Auth;
 
+[DbContext(typeof(AuthDbContext))]
 [Migration("20260506100000_AddAndroidVault")]
 public partial class AddAndroidVault : Migration
 {
