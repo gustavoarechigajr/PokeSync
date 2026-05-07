@@ -202,7 +202,12 @@ public class PKMConverterUtils(ILegalityAnalysisService legalityAnalysisService)
 
     public void CopyMovesFrom(PKM pkm, PKM pkmSrc)
     {
-        var srcLegality = legalityAnalysisService.GetLegalitySafe(new(pkmSrc));
+        // Preserve all source moves verbatim (modulo target-format MaxMoveID clamping).
+        // We do NOT strip moves the target legality analyzer flags as Unobtainable —
+        // cross-game vault transfers (e.g. PLA → SwSh) frequently have legal-in-source
+        // moves that the target's species/encounter table doesn't cover, and stripping
+        // them silently destroys the user's moveset. The vault keeps the original RawData
+        // so a future re-import to the source game restores legality.
 
         (ushort Move, int PPUps)[] srcMoves = [
             (pkmSrc.Move1, pkmSrc.Move1_PPUps),
@@ -244,40 +249,6 @@ public class PKMConverterUtils(ILegalityAnalysisService legalityAnalysisService)
                     break;
             }
         }
-        pkm.FixMoves();
-
-        // log.LogInformation($"MOVES = {pkm.Move1}/{pkm.Move2}/{pkm.Move3}/{pkm.Move4}");
-
-        var legality = legalityAnalysisService.GetLegalitySafe(new(pkm));
-        if (legality.la == null || legality.MovesValid.All(r => r))
-        {
-            return;
-        }
-
-        for (var i = 0; i < legality.MovesValid.Length; i++)
-        {
-            if (legality.MovesValid[i])
-                continue;
-
-            // if move was already invalid, keep it like that
-            if (!srcLegality.MovesValid[i])
-                continue;
-
-            var r = legality.la.Info.Moves[i];
-
-            if (r.Info.Method == LearnMethod.Unobtainable)
-            {
-                pkm.SetMove(i, 0);
-            }
-        }
-
-        // if no more moves
-        // reset first one
-        if (pkm.Move1 + pkm.Move2 + pkm.Move3 + pkm.Move4 == 0)
-        {
-            pkm.SetMove(0, pkmSrc.Move1);
-        }
-
         pkm.FixMoves();
     }
 

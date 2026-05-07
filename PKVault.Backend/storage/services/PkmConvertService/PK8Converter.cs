@@ -296,6 +296,13 @@ public class PK8Converter(PKMConverterUtils utils)
         utils.CopyIVsFrom(pk8, pa8);
         utils.CopyEVsFrom(pk8, pa8);
 
+        // PA8 has PLA-only balls (Strange Ball + LA* balls) that don't exist in SwSh.
+        // FixBallLegality may not fire when overall legality fails for other reasons
+        // (e.g. species not in SwSh pokedex), so remap unconditionally here.
+        // The original ball is preserved in the vault's RawData and restored on re-import to PLA.
+        if (pa8.Ball >= (byte)Ball.Strange)
+            pk8.Ball = (byte)Ball.Poke;
+
         pa8.CopyContestStatsTo(pk8);
 
         pa8.CopyRibbonSetCommon3(pk8);
