@@ -9,12 +9,22 @@ namespace PKVault.Backend.android.services;
 public class AndroidSaveService(
     IMemoryCache cache,
     IPkmConvertService pkmConvertService,
+    ISettingsService settingsService,
     ILogger<AndroidSaveService> log)
 {
     private static readonly TimeSpan SaveTtl = TimeSpan.FromHours(2);
+    private static readonly object DiskLock = new();
 
     private static string SaveDtoKey(string saveId) => $"android-save:dto:{saveId}";
     private static string RawDataKey(string saveId) => $"android-save:raw:{saveId}";
+
+    private string SaveDirectory()
+    {
+        var dir = settingsService.GetSettings().GetAndroidSavesPath();
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+    private string RawDataPath(string saveId) => Path.Combine(SaveDirectory(), $"{saveId}.sav");
 
     public AndroidSaveInfoDTO ParseAndCache(string userId, byte[] data, string filename)
     {
@@ -37,6 +47,7 @@ public class AndroidSaveService(
 
         cache.Set(SaveDtoKey(saveId), dto, SaveTtl);
         cache.Set(RawDataKey(saveId), data, SaveTtl);
+        WriteRawDataToDisk(saveId, data);
 
         log.LogInformation(
             "Parsed save {SaveId}: game={Game} gen={Gen} trainer={Trainer} pokemon={Count}",
@@ -46,20 +57,60 @@ public class AndroidSaveService(
         return dto;
     }
 
-    public AndroidSaveInfoDTO? GetCached(string saveId) =>
-        cache.TryGetValue(SaveDtoKey(saveId), out AndroidSaveInfoDTO? dto) ? dto : null;
+    /// <summary>
+    /// Returns the parsed DTO for a save. Cache → disk fallthrough — if the in-memory
+    /// cache is cold (process restart, TTL expiry), the raw bytes are reloaded from disk
+    /// and the DTO is rebuilt.
+    /// </summary>
+    public AndroidSaveInfoDTO? GetCached(string saveId)
+    {
+        if (cache.TryGetValue(SaveDtoKey(saveId), out AndroidSaveInfoDTO? dto) && dto != null)
+            return dto;
+
+        var rawBytes = ReadRawDataFromDisk(saveId);
+        if (rawBytes == null) return null;
+
+        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, ""))
+        {
+            log.LogWarning("Disk-cached save {SaveId} failed to parse; ignoring", saveId);
+            return null;
+        }
+
+        var pokemon = ExtractPokemon(save);
+        var rebuilt = new AndroidSaveInfoDTO(
+            SaveId: saveId,
+            GameVersion: FriendlyGameName(save.Version),
+            Generation: save.Generation,
+            TrainerName: save.OT,
+            BoxCount: save.BoxCount,
+            BoxSlotCount: save.BoxSlotCount,
+            PokemonCount: pokemon.Count,
+            Pokemon: pokemon
+        );
+
+        cache.Set(SaveDtoKey(saveId), rebuilt, SaveTtl);
+        cache.Set(RawDataKey(saveId), rawBytes, SaveTtl);
+        return rebuilt;
+    }
 
     /// <summary>
-    /// Injects a PKM into the cached save at the given box/slot and returns the modified save bytes.
-    /// Returns null if the save is no longer cached.
+    /// Injects a PKM into the save at the given box/slot and returns the modified save bytes.
+    /// Returns null only if the save raw data is missing from both cache AND disk.
     /// </summary>
     public byte[]? InjectPkm(string saveId, PKM pkm, int targetBox, int targetSlot)
     {
-        if (!cache.TryGetValue(RawDataKey(saveId), out byte[]? rawBytes) || rawBytes == null)
+        var rawBytes = GetRawData(saveId);
+        if (rawBytes == null)
+        {
+            log.LogWarning("InjectPkm: no raw data for save {SaveId} (cache + disk both empty)", saveId);
             return null;
+        }
 
         if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, ""))
+        {
+            log.LogWarning("InjectPkm: failed to parse save {SaveId} from {Bytes} bytes", saveId, rawBytes.Length);
             return null;
+        }
 
         if (targetBox >= save.BoxCount || targetSlot >= save.BoxSlotCount)
             throw new ArgumentOutOfRangeException(
@@ -75,8 +126,58 @@ public class AndroidSaveService(
 
         var modifiedBytes = save.Write().ToArray();
         cache.Set(RawDataKey(saveId), modifiedBytes, SaveTtl);
+        // DTO is now stale — drop so next GetCached re-extracts from the modified bytes.
+        cache.Remove(SaveDtoKey(saveId));
+        WriteRawDataToDisk(saveId, modifiedBytes);
 
         return modifiedBytes;
+    }
+
+    private byte[]? GetRawData(string saveId)
+    {
+        if (cache.TryGetValue(RawDataKey(saveId), out byte[]? bytes) && bytes != null)
+            return bytes;
+
+        bytes = ReadRawDataFromDisk(saveId);
+        if (bytes != null)
+            cache.Set(RawDataKey(saveId), bytes, SaveTtl);
+        return bytes;
+    }
+
+    private void WriteRawDataToDisk(string saveId, byte[] bytes)
+    {
+        var path = RawDataPath(saveId);
+        var tmp = path + ".tmp";
+        try
+        {
+            // Write-then-rename: avoids leaving a half-written file if the process dies mid-write.
+            lock (DiskLock)
+            {
+                File.WriteAllBytes(tmp, bytes);
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tmp, path);
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Failed to persist save raw data to disk: {Path}", path);
+            throw;
+        }
+    }
+
+    private byte[]? ReadRawDataFromDisk(string saveId)
+    {
+        var path = RawDataPath(saveId);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            return File.ReadAllBytes(path);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Failed to read save raw data from disk: {Path}", path);
+            return null;
+        }
     }
 
     private static string FriendlyGameName(GameVersion v) => v switch
