@@ -2,133 +2,81 @@
     <img height="200" src="frontend\public\logo.svg" alt="PKVault logo" />
 </p>
 
-<h1 align="center">PKVault</h1>
+<h1 align="center">PokeSync</h1>
 
-<h4 align="center">
-    <a href="https://pkvault-demo.chnapy.dev"><b>DEMO</b></a>
-</h4>
-
-<h6 align="center">
-    <a href="https://github.com/Chnapy/PKVault/releases"><b>RELEASES</b></a>
-    &nbsp;|&nbsp;
-    <a href="https://projectpokemon.org/home/files/file/5766-pkvault/"><b>PROJECT POKEMON TOOL PAGE</b></a>
-    &nbsp;|&nbsp;
-    <a href="https://projectpokemon.org/home/forums/topic/67239-pkvault-centralized-pkm-storage-management-pokedex-app"><b>PROJECT POKEMON DISCUSSION PAGE</b></a>
-</h6>
-
-PKVault is a Pokemon storage & save manipulation tool based on [PKHeX](https://github.com/kwsch/PKHeX).
-Similar to Pokemon Home, offline as online.
-
-This tool can be used as:
-
-- 📥 Desktop app
-  - Windows -> [PKVault.exe](https://github.com/Chnapy/PKVault/releases/latest)
-  - Linux & SteamDeck -> [pkvault.AppImage](https://github.com/Chnapy/PKVault/releases/latest) / [pkvault.deb](https://github.com/Chnapy/PKVault/releases/latest) / [pkvault.flatpak](https://github.com/Chnapy/PKVault/releases/latest) / [pkvault](https://github.com/Chnapy/PKVault/releases/latest)
-
-- 🐳 Docker web-app
-  - `image: ghcr.io/chnapy/pkvault` -> check [below for usage](#docker-usage)
-
-![Platforms](https://img.shields.io/badge/Platform-Windows%20|%20Linux%20|%20SteamDeck%20|%20Docker-informational)
-![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
+<h4 align="center">A self-hosted Pokémon save manager with Android companion app</h4>
 
 <p align="center">
-    <img src="img/snap_1.png" alt="PKVault snapshot 1" />
-    <img src="img/snap_2.png" alt="PKVault snapshot 2" style="display: inline-block; width: 24%" />
-    <img src="img/snap_3.png" alt="PKVault snapshot 3" style="display: inline-block; width: 24%" />
-    <img src="img/snap_4.png" alt="PKVault snapshot 4" style="display: inline-block; width: 24%" />
-    <img src="img/snap_5.png" alt="PKVault snapshot 5" style="display: inline-block; width: 24%" />
+    <img src="https://img.shields.io/badge/Platform-Docker%20|%20Android-informational" />
+    <img src="https://img.shields.io/badge/License-GPLv3-blue.svg" />
+    <img src="https://img.shields.io/badge/Backend-.NET%2010-purple" />
+    <img src="https://img.shields.io/badge/Android-API%2029%2B-green" />
 </p>
 
-## Bulk features
+---
 
-- Storage & save manipulation
-  - compatible with all pokemon games, from first generation to **Pokemon Legends: Z-A**
-  - move pokemons between saves
-  - convert pokemon to any generation (ex. G7 to G2)
-  - store pokemons outside saves using banks & boxes
-  - allow use of multiple "variants" for stored pokemons
-  - move/delete actions
-  - edit pokemon moves, EVs & nickname
-  - evolve pokemons requiring trade or trade + held-item (ex. Kadabra -> Alakazam)
-  - link a save pokemon with all his variants, sharing data like exp & EVs
-  - use of external PKM files, outside PKVault environment
-  - backup all saves & storage before any save action
-    - backups listing
-    - backups restore always possible
-- Centralized Pokedex based on all listed saves
-  - views with forms & genders
-  - multiple filters: species name, seen/caught/owned, types, ...
-    - possible living dex
-    - possible shiny dex
-- Dynamic saves listing based on paths & globs
+**PokeSync** is a fork of [PKVault](https://github.com/Chnapy/PKVault) extended with multi-user JWT authentication and an Android companion app. Run it on your homelab and sync Pokémon save files directly from your Android emulators.
 
-## Docker usage
+## What's new in this fork
 
-You can use a plug'n'play docker image, compatible `Linux x86_64` and `Linux ARM` (like Raspberry Pis).
+### Multi-user server
+- **JWT authentication** — register and log in with a username/password; every API endpoint is protected
+- **Per-user databases** — each user gets isolated storage (`pkvault-{userId}.db`); original PKVault data model unchanged
+- **Android save upload API** — `POST /api/android/saves/upload` accepts a raw save file, parses it with PKHeX, and caches the result
+- **Browse API** — `GET /api/android/saves/{saveId}/pokemon` returns the full Pokémon roster for a save
 
-`docker-compose.yml` example:
+### Android companion app ([PokeSync-Android](https://github.com/gustavoarechigajr/PokeSync-Android))
+- **Emulator scanner** — automatically finds save files from RetroArch, Azahar, Eden, DraStic, My Boy!, and ClassicBoy
+- **Save registry** — add a save once; the app remembers it forever
+- **One-tap sync** — tap Sync on any registered save to re-upload the latest version from your device
+- **Browse Pokémon** — view your full box roster with species, level, shiny status, and nature
+- **Save as backup** — every sync keeps a server-side copy of your save, recoverable if the device file is lost
+- **Manual file picker** — pick any `.sav`/`.bin`/etc. file via the system file browser as a fallback
+- **Unrestricted file access** — supports `MANAGE_EXTERNAL_STORAGE` to read Eden's `Android/data/` directory
 
-```yml
+## Docker deployment
+
+```yaml
 services:
-  pkvault:
-    image: ghcr.io/chnapy/pkvault:latest # or specific version, like 1.5.1
+  pokesync:
+    image: ghcr.io/gustavoarechigajr/pokesync:latest
+    container_name: pokesync
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "5100:5000"
     environment:
-      - LOG_FILE_COUNT_LIMIT=10     # removes extra log files, default: 10
-      - BACKUP_FILE_COUNT_LIMIT=30  # removes extra backup files, default: no limit
+      - JWT_KEY=your-secret-key-min-32-chars-change-this
     volumes:
-      - ./path/to/pkvault/data:/pkvault
-
-      # save paths sample
-      - ./path/to/saves:/data/saves
-      - ./path/to/other/saves:/data/other-saves
-      
-      # external-pkms path sample (optional)
-      - ./path/to/external-pkms:/data/external-pkms
+      - /path/to/pokesync-data:/pkvault
 ```
 
-> Note: with this config sample, you can use in PKVault settings:
-> - Saves files locations:
->   - /data/saves/ (or any subpath)
->   - /data/other-saves/ (or any subpath)
-> - External PKM files locations:
->   - /data/external-pkms/ (or any subpath)
-
-Perfect for homelab context.
-
-Or using basic docker run:
-
-```
-docker run \
-  -p 3000:3000 \
-  -v ./path/to/pkvault/data:/pkvault \
-  -v ./path/to/saves:/data/saves \
-  ghcr.io/chnapy/pkvault:latest
+Generate a secure key:
+```bash
+openssl rand -base64 32
 ```
 
-## [Functional documentation](./docs/functional/en/README.md)
+## API
 
-## [Technical documentation](./docs/technical/README.md)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/auth/register` | No | Create account |
+| POST | `/api/auth/login` | No | Get JWT token |
+| POST | `/api/android/saves/upload` | Yes | Upload save file (multipart) |
+| GET | `/api/android/saves/{saveId}` | Yes | Get save info |
+| GET | `/api/android/saves/{saveId}/pokemon` | Yes | Get Pokémon list |
 
-Includes quick start.
+All other PKVault endpoints require auth and work as documented in the original project.
 
-## [Contribute](./.github/CONTRIBUTING.md)
+## Original PKVault features
 
-## Licenses
+- Compatible with all Pokémon games from Gen 1 to **Pokémon Legends: Z-A**
+- Move Pokémon between saves
+- Convert Pokémon across generations (e.g. Gen 7 → Gen 2)
+- Banks & boxes for storage outside saves
+- Edit moves, EVs, nickname, evolve trade-evolution Pokémon
+- Centralized Pokédex across all saves
+- Automatic backups before every save action
 
-This app (PKVault) is licensed under GPLv3 terms, as described in file [LICENSE](./LICENSE).
-Your can use this app for your own projects following license restrictions.
+---
 
-- Backend / Desktop
-  - [PKHeX (Core part)](https://github.com/kwsch/PKHeX/tree/master/PKHeX.Core) - License GPLv3
-  - Versions & all others dependencies can be found into `*.csproj` files
-
-- Frontend
-  - Font "Pixel Operator" - from [onlinewebfonts](http://www.onlinewebfonts.com) - License CC BY 4.0
-  - Font "Pokemon Emerald" - from [fontstruct](https://fontstruct.com/fontstructions/show/1975556) by "aztecwarrior28" - License CC BY-SA 3.0
-  - [HackerNoon's Pixel Icon Library](https://github.com/hackernoon/pixel-icon-library) - License MIT
-  - Versions & all others dependencies can be found into [frontend/package.json](./frontend/package.json).
-
-All image contents of game-icons, pokemons, types, items, move-categories are Copyright The Pokémon Company.
+*Forked from [PKVault](https://github.com/Chnapy/PKVault) by Chnapy — licensed under GPLv3.*
