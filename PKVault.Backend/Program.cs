@@ -108,7 +108,7 @@ public class Program
         }
 
         // Sessions are created per-user on first authenticated request - no startup session needed
-        return null;
+        return () => Task.CompletedTask;
 #else
         throw new Exception("Mode not defined");
 #endif
