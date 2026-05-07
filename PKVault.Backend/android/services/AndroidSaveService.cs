@@ -146,6 +146,98 @@ public class AndroidSaveService(
         return modifiedBytes;
     }
 
+    /// <summary>
+    /// Pre-flight check before InjectPkm. Confirms whether the source PKM can be
+    /// transferred into the target save's format and surfaces blocking errors
+    /// (silhouette in target game) and informational warnings (legality issues).
+    /// Universal across target formats — uses the appropriate IPersonalTable
+    /// for each target generation.
+    /// </summary>
+    public TransferValidationDTO ValidateExport(string saveId, PKM sourcePkm)
+    {
+        var raw = GetRawData(saveId);
+        if (raw == null)
+            return new TransferValidationDTO(false, ["Save session expired."], [], null);
+
+        var (rawBytes, filename) = raw.Value;
+        if (!SaveUtil.TryGetSaveFile((byte[])rawBytes.Clone(), out var save, filename))
+            return new TransferValidationDTO(false, ["Failed to parse save file."], [], null);
+
+        var targetType = save.BlankPKM.GetType();
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        // Step 1: species/form presence in target game's data tables.
+        // If absent, the receiving game has no asset to render and will display
+        // the silhouette icon — block the transfer.
+        var pt = GetPersonalTable(targetType);
+        if (pt != null)
+        {
+            if (sourcePkm.Species == 0)
+                errors.Add("Source Pokémon has no species.");
+            else if (!pt.IsPresentInGame(sourcePkm.Species, sourcePkm.Form))
+                errors.Add(
+                    $"Species #{sourcePkm.Species} (form {sourcePkm.Form}) is not in {targetType.Name}'s data — " +
+                    "the target game cannot render it (silhouette).");
+        }
+        // else: pre-gen-7 fallthrough — skip presence check, rely on legality warnings only.
+
+        if (errors.Count > 0)
+            return new TransferValidationDTO(false, errors, warnings, null);
+
+        // Step 2: dry-run the conversion. If no path exists, ConvertRecursive
+        // throws InvalidOperationException — that's a hard block.
+        PKM converted;
+        try
+        {
+            var result = pkmConvertService.ConvertTo(new ImmutablePKM(sourcePkm), targetType, null, save);
+            converted = result.GetMutablePkm();
+        }
+        catch (InvalidOperationException ex)
+        {
+            errors.Add($"Conversion path unavailable: {ex.Message}");
+            return new TransferValidationDTO(false, errors, warnings, null);
+        }
+
+        // Step 3: legality of the converted PKM. Failures are warnings only —
+        // SwSh/SV will still render an in-dex species even if encounter/moves
+        // are flagged illegal in PKHeX. The user can override.
+        var la = new LegalityAnalysis(converted);
+        foreach (var check in la.Results)
+        {
+            if (!check.Valid)
+                warnings.Add($"{check.Identifier}: {check.Result}");
+        }
+
+        return new TransferValidationDTO(
+            CanTransfer: true,
+            Errors: errors,
+            Warnings: warnings,
+            OutputFormat: converted.GetType().Name);
+    }
+
+    /// <summary>
+    /// Maps a target PKM type to its game's personal table for species presence checks.
+    /// Returns null for older formats not yet covered (caller skips presence check).
+    /// </summary>
+    private static IPersonalTable? GetPersonalTable(Type targetType) => targetType.Name switch
+    {
+        "PK8" => PersonalTable.SWSH,
+        "PA8" => PersonalTable.LA,
+        "PB8" => PersonalTable.BDSP,
+        "PK9" => PersonalTable.SV,
+        "PA9" => PersonalTable.ZA,
+        "PB7" => PersonalTable.GG,
+        "PK7" => PersonalTable.USUM,
+        "PK6" => PersonalTable.AO,
+        "PK5" => PersonalTable.B2W2,
+        "PK4" => PersonalTable.HGSS,
+        "PK3" => PersonalTable.E,
+        "PK2" => PersonalTable.C,
+        "PK1" => PersonalTable.Y,
+        _ => null,
+    };
+
     private (byte[] Bytes, string Filename)? GetRawData(string saveId)
     {
         if (cache.TryGetValue(RawDataKey(saveId), out byte[]? bytes) && bytes != null)

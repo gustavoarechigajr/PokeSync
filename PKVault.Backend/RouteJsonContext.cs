@@ -28,6 +28,7 @@ using PKVault.Backend.auth.dto;
 [JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ValidationProblemDetails))]
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
+[JsonSerializable(typeof(TransferValidationDTO))]
 public partial class RouteJsonContext : JsonSerializerContext
 {
 }

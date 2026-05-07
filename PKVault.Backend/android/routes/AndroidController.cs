@@ -131,6 +131,33 @@ public class AndroidController(
     /// The PKM is converted to the target save's format and injected.
     /// Returns the modified save file for the client to write back to device storage.
     /// </summary>
+    /// <summary>
+    /// Pre-flight check for ExportToSave. Tells the client whether the transfer will
+    /// succeed (errors block, warnings are informational). No state is modified.
+    /// </summary>
+    [HttpPost("vault/{vaultId}/validate-export")]
+    public async Task<ActionResult<TransferValidationDTO>> ValidateExport(
+        string vaultId,
+        [FromQuery] string saveId)
+    {
+        if (!saveId.StartsWith(UserId))
+            return Forbid();
+
+        var entity = await vaultService.GetEntity(UserId, vaultId);
+        if (entity is null)
+            return NotFound("Vault Pokémon not found.");
+
+        if (entity.RawData == null || entity.RawData.Length == 0)
+            return BadRequest("This Pokémon has no raw data stored. Re-import it from a save file.");
+
+        var pkm = AndroidVaultService.ReconstructPkm(entity);
+        if (pkm is null)
+            return BadRequest($"Failed to reconstruct PKM from format '{entity.RawDataFormat}'.");
+
+        var result = saveService.ValidateExport(saveId, pkm);
+        return Ok(result);
+    }
+
     [HttpPost("vault/{vaultId}/export")]
     public async Task<ActionResult> ExportToSave(
         string vaultId,
