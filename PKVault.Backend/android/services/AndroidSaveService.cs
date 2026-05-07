@@ -20,7 +20,7 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
 
         var dto = new AndroidSaveInfoDTO(
             SaveId: saveId,
-            GameVersion: save.Version.ToString(),
+            GameVersion: FriendlyGameName(save.Version),
             Generation: save.Generation,
             TrainerName: save.OT,
             BoxCount: save.BoxCount,
@@ -43,6 +43,49 @@ public class AndroidSaveService(IMemoryCache cache, ILogger<AndroidSaveService> 
         cache.TryGetValue(CacheKey(saveId), out AndroidSaveInfoDTO? dto) ? dto : null;
 
     private static string CacheKey(string saveId) => $"android-save:{saveId}";
+
+    private static string FriendlyGameName(GameVersion v) => v switch
+    {
+        GameVersion.RD => "Pokémon Red",
+        GameVersion.BU => "Pokémon Blue (JP)",
+        GameVersion.GN => "Pokémon Green",
+        GameVersion.YW => "Pokémon Yellow",
+        GameVersion.GD => "Pokémon Gold",
+        GameVersion.SV => "Pokémon Silver",
+        GameVersion.C  => "Pokémon Crystal",
+        GameVersion.R  => "Pokémon Ruby",
+        GameVersion.S  => "Pokémon Sapphire",
+        GameVersion.E  => "Pokémon Emerald",
+        GameVersion.FR => "Pokémon FireRed",
+        GameVersion.LG => "Pokémon LeafGreen",
+        GameVersion.D  => "Pokémon Diamond",
+        GameVersion.P  => "Pokémon Pearl",
+        GameVersion.Pt => "Pokémon Platinum",
+        GameVersion.HG => "Pokémon HeartGold",
+        GameVersion.SS => "Pokémon SoulSilver",
+        GameVersion.B  => "Pokémon Black",
+        GameVersion.W  => "Pokémon White",
+        GameVersion.B2 => "Pokémon Black 2",
+        GameVersion.W2 => "Pokémon White 2",
+        GameVersion.X  => "Pokémon X",
+        GameVersion.Y  => "Pokémon Y",
+        GameVersion.OR => "Pokémon Omega Ruby",
+        GameVersion.AS => "Pokémon Alpha Sapphire",
+        GameVersion.SN => "Pokémon Sun",
+        GameVersion.MN => "Pokémon Moon",
+        GameVersion.US => "Pokémon Ultra Sun",
+        GameVersion.UM => "Pokémon Ultra Moon",
+        GameVersion.GP => "Pokémon: Let's Go, Pikachu!",
+        GameVersion.GE => "Pokémon: Let's Go, Eevee!",
+        GameVersion.SW => "Pokémon Sword",
+        GameVersion.SH => "Pokémon Shield",
+        GameVersion.BD => "Pokémon Brilliant Diamond",
+        GameVersion.SP => "Pokémon Shining Pearl",
+        GameVersion.PLA => "Pokémon Legends: Arceus",
+        GameVersion.SL => "Pokémon Scarlet",
+        GameVersion.VL => "Pokémon Violet",
+        _ => v.ToString(),
+    };
 
     private static List<AndroidPokemonDTO> ExtractPokemon(SaveFile save)
     {
