@@ -46,6 +46,8 @@ public class SessionService(
         public readonly List<ActionRecord> Actions = [];
     }
 
+    private const string DefaultUserId = "default";
+
     private readonly ConcurrentDictionary<string, UserSessionState> _userSessions = new();
 
     private string DbFolderPath => settingsService.GetSettings().GetDbPath();
@@ -53,38 +55,37 @@ public class SessionService(
     private string? GetCurrentUserId() =>
         httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-    private string GetRequiredUserId() =>
-        GetCurrentUserId() ?? throw new InvalidOperationException("No authenticated user in HTTP context.");
+    // Falls back to "default" for unauthenticated (web UI) requests
+    private string GetEffectiveUserId() =>
+        GetCurrentUserId() ?? DefaultUserId;
 
     private UserSessionState GetCurrentSession() =>
-        _userSessions.GetOrAdd(GetRequiredUserId(), _ => new UserSessionState());
-
-    private bool HasHttpContext => GetCurrentUserId() != null;
+        _userSessions.GetOrAdd(GetEffectiveUserId(), _ => new UserSessionState());
 
     // Per-user DB paths
-    public string MainDbPath => GetMainDbPath(GetRequiredUserId());
+    public string MainDbPath => GetMainDbPath(GetEffectiveUserId());
     public string MainDbRelativePath => Path.Combine(
         settingsService.GetSettings().SettingsMutable.DB_PATH,
-        $"pkvault-{GetRequiredUserId()}.db");
-    public string SessionDbPath => GetSessionDbPath(GetRequiredUserId());
+        $"pkvault-{GetEffectiveUserId()}.db");
+    public string SessionDbPath => GetSessionDbPath(GetEffectiveUserId());
 
     private string GetMainDbPath(string userId) => Path.Combine(DbFolderPath, $"pkvault-{userId}.db");
     private string GetSessionDbPath(string userId) => Path.Combine(DbFolderPath, $"pkvault-session-{userId}.db");
 
     // ISessionService interface — delegate to per-user state
-    public DateTime? StartTime => HasHttpContext ? GetCurrentSession().StartTime : null;
-    public List<ActionRecord> Actions => HasHttpContext ? GetCurrentSession().Actions : [];
+    public DateTime? StartTime => GetCurrentSession().StartTime;
+    public List<ActionRecord> Actions => GetCurrentSession().Actions;
 
     public bool HasMainDb() => fileIOService.Exists(MainDbPath);
 
     public List<DataActionPayload> GetActionPayloadList() =>
-        HasHttpContext ? [.. GetCurrentSession().Actions.Select(a => a.Payload)] : [];
+        [.. GetCurrentSession().Actions.Select(a => a.Payload)];
 
-    public bool HasEmptyActionList() => !HasHttpContext || GetCurrentSession().Actions.Count == 0;
+    public bool HasEmptyActionList() => GetCurrentSession().Actions.Count == 0;
 
     public async Task StartNewSession(bool checkInitialActions, DataUpdateFlags? flags)
     {
-        var userId = GetRequiredUserId();
+        var userId = GetEffectiveUserId();
         var session = GetCurrentSession();
 
         session.StartTime = timeProvider.GetUtcNow().DateTime;
@@ -192,7 +193,7 @@ public class SessionService(
 
     public async Task EnsureSessionCreated(Guid? byPassContextId = null)
     {
-        var userId = GetRequiredUserId();
+        var userId = GetEffectiveUserId();
         var session = GetCurrentSession();
 
         if (session.StartTask == null)
@@ -212,7 +213,7 @@ public class SessionService(
 
     public async Task PersistSession(IServiceScope scope)
     {
-        var userId = GetRequiredUserId();
+        var userId = GetEffectiveUserId();
         var session = GetCurrentSession();
 
         using var _ = log.Time("Persist session with copy session to main");
