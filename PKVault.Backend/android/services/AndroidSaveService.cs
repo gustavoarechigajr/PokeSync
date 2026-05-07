@@ -30,7 +30,10 @@ public class AndroidSaveService(
 
     public AndroidSaveInfoDTO ParseAndCache(string userId, byte[] data, string filename)
     {
-        if (!SaveUtil.TryGetSaveFile(data, out var save, filename))
+        // PKHeX decrypts/mutates the input array in place for some formats (SwSh via SwishCrypto).
+        // Parse a copy so the cached + disk-persisted bytes remain in their original on-device form,
+        // letting future InjectPkm calls re-parse them.
+        if (!SaveUtil.TryGetSaveFile((byte[])data.Clone(), out var save, filename))
             throw new InvalidOperationException($"Unrecognized save file format: {filename}");
 
         var saveId = $"{userId}-{Guid.NewGuid():N}";
@@ -74,7 +77,7 @@ public class AndroidSaveService(
         if (disk == null) return null;
         var (rawBytes, filename) = disk.Value;
 
-        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, filename))
+        if (!SaveUtil.TryGetSaveFile((byte[])rawBytes.Clone(), out var save, filename))
         {
             log.LogWarning(
                 "Disk-cached save {SaveId} failed to parse from {Bytes} bytes (filename hint: {Filename}); ignoring",
@@ -114,7 +117,7 @@ public class AndroidSaveService(
         }
         var (rawBytes, filename) = data.Value;
 
-        if (!SaveUtil.TryGetSaveFile(rawBytes, out var save, filename))
+        if (!SaveUtil.TryGetSaveFile((byte[])rawBytes.Clone(), out var save, filename))
         {
             log.LogWarning(
                 "InjectPkm: failed to parse save {SaveId} from {Bytes} bytes (filename hint: {Filename})",
