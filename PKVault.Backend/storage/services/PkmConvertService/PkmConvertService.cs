@@ -48,6 +48,14 @@ public class PkmConvertService(ILogger<PkmConvertService> log, ISettingsService 
 
         pkmConverterUtils.FixCommonLegalityIssues(result, targetSave != null ? new(targetSave) : null);
 
+        // Gen 8+ formats (PK8/PB8/PA8/PK9/PA9) carry a Pokemon HOME tracker.
+        // SwSh/BDSP/SV refuse to render IHomeTrack mons whose tracker is zero
+        // (they treat them as illegitimate and show the silhouette icon).
+        // Stamp a random non-zero tracker here so every cross-format conversion
+        // produces a renderable mon — covers PA8→PK8, PK7→PK8, PK8→PK9, etc.
+        if (result is IHomeTrack ht && ht.Tracker == 0)
+            ht.Tracker = ((ulong)Util.Rand.Rand32() << 32) | Util.Rand.Rand32();
+
         result.Heal();
         result.ResetPartyStats();
         result.RefreshChecksum();

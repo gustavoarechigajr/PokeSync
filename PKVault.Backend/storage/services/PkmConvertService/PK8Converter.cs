@@ -329,14 +329,6 @@ public class PK8Converter(PKMConverterUtils utils)
 
         utils.CopyMovesFrom(pk8, pa8);
 
-        // SwSh refuses to render PK8s without a HomeTracker (the 8-byte ID
-        // stamped onto every Pokemon that passes through Pokemon HOME).
-        // PA8s straight from PLA never went through HOME, so we'd hand
-        // SwSh a zero tracker and the box renders the silhouette icon.
-        // Synthesize a random one — PKHeX treats this as legal for HOME-
-        // sourced mons and the game accepts it as long as it's non-zero.
-        pk8.Tracker = ((ulong)Util.Rand.Rand32() << 32) | Util.Rand.Rand32();
-
         return pk8;
     }
 }
