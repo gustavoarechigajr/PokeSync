@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using PKVault.Backend.auth;
 using PKVault.Backend.auth.services;
@@ -202,6 +203,10 @@ public class Program
             var settingsService = sp.GetRequiredService<ISettingsService>();
             var dbPath = Path.Combine(settingsService.GetSettings().GetDbPath(), "auth.db");
             options.UseSqlite($"Data Source={dbPath}");
+            // Snapshot stores Property<int> for entity ushort/byte fields (all INTEGER in
+            // SQLite); migrations were authored by hand. Suppress EF's pending-changes
+            // diff so MigrateAsync runs the existing migrations without complaint.
+            options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
         services.AddScoped<AuthService>();
         services.AddSingleton<PKVault.Backend.android.services.AndroidSaveService>();
